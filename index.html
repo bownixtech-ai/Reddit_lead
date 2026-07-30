@@ -44,6 +44,12 @@
   .missed-chip svg.chev{ margin-left:auto; transition:transform .25s var(--bounce); }
   .missed-chip.open svg.chev{ transform:rotate(180deg); }
 
+  .scan-now-btn{ display:flex; align-items:center; justify-content:center; gap:8px; width:100%; background:var(--surface); border:1px solid var(--line); color:var(--ink-dim); padding:12px 16px; border-radius:15px; font-size:13.5px; font-weight:700; margin-bottom:12px; }
+  .scan-now-btn:active{ transform:scale(.98); }
+  .scan-now-btn.spinning svg{ animation:spin 1s linear infinite; }
+  .scan-now-btn:disabled{ opacity:.6; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
   .tabstrip{ display:flex; gap:9px; overflow-x:auto; padding:2px 2px 18px; }
   .tab{ flex-shrink:0; font-size:14.5px; font-weight:700; padding:10px 16px; border-radius:12px; background:var(--surface-2); border:1px solid var(--line); color:var(--ink-dim); }
   .tab.active{ background:var(--blue); color:#fff; border-color:var(--blue); }
@@ -135,6 +141,11 @@
         <div class="stat plain"><span class="stat-num" id="statPosted">–</span><span class="stat-key">Posted</span></div>
         <div class="stat plain"><span class="stat-num" id="statSubs">–</span><span class="stat-key">Subs</span></div>
       </div>
+
+      <button class="scan-now-btn" id="scanNowBtn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+        <span id="scanNowText">Scan now</span>
+      </button>
 
       <button class="missed-chip" id="missedChip">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -259,6 +270,7 @@
   const SUPABASE_URL = "https://xwaqlcfoebkvhcejmziw.supabase.co";
   const SUPABASE_ANON_KEY = "sb_publishable_QmwLRHf94SVHYbtXV_YsBw_Nbt6Mjng";
   const SETTINGS_API_URL = "https://xwaqlcfoebkvhcejmziw.supabase.co/functions/v1/settings-api";
+  const SCAN_URL = "https://xwaqlcfoebkvhcejmziw.supabase.co/functions/v1/scan";
 
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -399,6 +411,34 @@
     clearTimeout(tt);
     tt = setTimeout(()=>toast.classList.remove('show'), 2300);
   }
+
+  document.getElementById('scanNowBtn').addEventListener('click', async () => {
+    const secret = localStorage.getItem('lr_secret');
+    if (!secret) {
+      showToast('Unlock AI settings once first (AI tab)');
+      return;
+    }
+    const btn = document.getElementById('scanNowBtn');
+    const label = document.getElementById('scanNowText');
+    btn.disabled = true;
+    btn.classList.add('spinning');
+    label.textContent = 'Scanning…';
+    try {
+      const res = await fetch(SCAN_URL, { headers: { Authorization: `Bearer ${secret}` } });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('Scan complete');
+        loadLeads(); loadStats();
+      } else {
+        showToast(data.error || 'Scan failed');
+      }
+    } catch (e) {
+      showToast('Scan failed — check connection');
+    }
+    btn.disabled = false;
+    btn.classList.remove('spinning');
+    label.textContent = 'Scan now';
+  });
 
   document.getElementById('missedChip').addEventListener('click', () => {
     document.getElementById('missedWrap').classList.toggle('open');

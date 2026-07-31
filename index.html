@@ -270,7 +270,6 @@
   const SUPABASE_URL = "https://xwaqlcfoebkvhcejmziw.supabase.co";
   const SUPABASE_ANON_KEY = "sb_publishable_QmwLRHf94SVHYbtXV_YsBw_Nbt6Mjng";
   const SETTINGS_API_URL = "https://xwaqlcfoebkvhcejmziw.supabase.co/functions/v1/settings-api";
-  const SCAN_URL = "https://xwaqlcfoebkvhcejmziw.supabase.co/functions/v1/scan";
 
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -412,32 +411,28 @@
     tt = setTimeout(()=>toast.classList.remove('show'), 2300);
   }
 
+  // Scan Now — writes a fresh timestamp to the open `triggers` table.
+  // Task Hub (running on the laptop) polls this table every ~20s and runs
+  // the scanner job as soon as it sees a new value. No password needed —
+  // this table has the same open RLS policy as `leads`/`subreddits`.
   document.getElementById('scanNowBtn').addEventListener('click', async () => {
-    const secret = localStorage.getItem('lr_secret');
-    if (!secret) {
-      showToast('Unlock AI settings once first (AI tab)');
-      return;
-    }
     const btn = document.getElementById('scanNowBtn');
     const label = document.getElementById('scanNowText');
     btn.disabled = true;
     btn.classList.add('spinning');
-    label.textContent = 'Scanning…';
+    label.textContent = 'Requested…';
     try {
-      const res = await fetch(SCAN_URL, { headers: { Authorization: `Bearer ${secret}` } });
-      const data = await res.json();
-      if (data.ok) {
-        showToast('Scan complete');
-        loadLeads(); loadStats();
-      } else {
-        showToast(data.error || 'Scan failed');
-      }
+      await sb.from('triggers').update({ value: Date.now() }).eq('key', 'scan_now');
+      showToast('Scan requested — laptop will pick it up shortly');
     } catch (e) {
-      showToast('Scan failed — check connection');
+      showToast('Could not request scan — check connection');
     }
-    btn.disabled = false;
-    btn.classList.remove('spinning');
-    label.textContent = 'Scan now';
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.classList.remove('spinning');
+      label.textContent = 'Scan now';
+      loadLeads(); loadStats();
+    }, 3000);
   });
 
   document.getElementById('missedChip').addEventListener('click', () => {

@@ -152,6 +152,11 @@
         <div class="stat plain"><span class="stat-num" id="statSubs">–</span><span class="stat-key">Subs</span></div>
       </div>
 
+      <button class="scan-now-btn" id="scanNowBtn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        <span id="scanNowText">Scan now</span>
+      </button>
+
       <button class="missed-chip" id="missedChip">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         <span id="missedChipText">Missed — tap to review</span>
@@ -445,6 +450,26 @@
     clearTimeout(tt);
     tt = setTimeout(()=>toast.classList.remove('show'), 2300);
   }
+
+  document.getElementById('scanNowBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('scanNowBtn');
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.classList.add('spinning');
+    document.getElementById('scanNowText').textContent = 'Triggering…';
+    try {
+      await sb.from('triggers').update({ value: Math.floor(Date.now()/1000) }).eq('key', 'scan_now');
+      showToast('Scan triggered — laptop picks it up in ~20s');
+    } catch (e) {
+      showToast('Could not trigger scan');
+    } finally {
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.classList.remove('spinning');
+        document.getElementById('scanNowText').textContent = 'Scan now';
+      }, 3000);
+    }
+  });
 
   document.getElementById('missedChip').addEventListener('click', () => {
     document.getElementById('missedWrap').classList.toggle('open');

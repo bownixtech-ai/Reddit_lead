@@ -229,6 +229,32 @@
             <input id="autoFallback" type="checkbox" style="width:20px; height:20px;">
           </div>
         </div>
+        <div class="section-label">Automation</div>
+        <div class="card-block">
+          <h4>Quiet hours &amp; timing</h4>
+          <div class="row2">
+            <div class="field"><label>Quiet hours start (0-23, blank = off)</label><input id="quietStart" type="number" min="0" max="23" step="1"></div>
+            <div class="field"><label>Quiet hours end (0-23)</label><input id="quietEnd" type="number" min="0" max="23" step="1"></div>
+          </div>
+          <div class="field"><label>Startup jitter, max minutes</label><input id="startupJitter" type="number" min="0" step="1"></div>
+        </div>
+        <div class="card-block">
+          <h4>Automated posting</h4>
+          <div class="toggle-row">
+            <label style="text-transform:none; font-weight:600; color:var(--ink);">Enable automated posting</label>
+            <input id="autopostEnabled" type="checkbox" style="width:20px; height:20px;">
+          </div>
+          <div class="toggle-row">
+            <label style="text-transform:none; font-weight:600; color:var(--ink);">Dry run (types but never submits — safe testing mode)</label>
+            <input id="autopostDryRun" type="checkbox" style="width:20px; height:20px;">
+          </div>
+          <div class="row2">
+            <div class="field"><label>Post delay min (minutes)</label><input id="postDelayMin" type="number" min="0" step="1"></div>
+            <div class="field"><label>Post delay max (minutes)</label><input id="postDelayMax" type="number" min="0" step="1"></div>
+          </div>
+          <div class="field"><label>Max posts per run</label><input id="postsPerRunCap" type="number" min="1" step="1"></div>
+          <p class="locked-note">Dry run is ON by default. Turn it off only after checking a few dry runs look correct in Stats.</p>
+        </div>
         <div class="section-label">Lead criteria</div>
         <div class="card-block"><div class="field"><textarea id="leadCriteria" rows="7"></textarea></div></div>
         <div class="section-label">Comment style</div>
@@ -603,6 +629,14 @@
       autoFallback.checked = s.ai_auto_fallback === 'true';
       leadCriteria.value = s.lead_criteria_prompt || '';
       commentStyle.value = s.comment_style_notes || '';
+      quietStart.value = s.quiet_hours_start ?? '';
+      quietEnd.value = s.quiet_hours_end ?? '';
+      startupJitter.value = s.startup_jitter_max_minutes ?? '5';
+      autopostEnabled.checked = s.autopost_enabled === 'true';
+      autopostDryRun.checked = s.autopost_dry_run !== 'false';
+      postDelayMin.value = s.post_delay_min_minutes ?? '15';
+      postDelayMax.value = s.post_delay_max_minutes ?? '180';
+      postsPerRunCap.value = s.posts_per_run_cap ?? '1';
     } catch (e) {
       showToast('Wrong password');
     }
@@ -627,6 +661,14 @@
         ai_auto_fallback: autoFallback.checked ? 'true' : 'false',
         lead_criteria_prompt: leadCriteria.value,
         comment_style_notes: commentStyle.value,
+        quiet_hours_start: quietStart.value,
+        quiet_hours_end: quietEnd.value,
+        startup_jitter_max_minutes: startupJitter.value,
+        autopost_enabled: autopostEnabled.checked ? 'true' : 'false',
+        autopost_dry_run: autopostDryRun.checked ? 'true' : 'false',
+        post_delay_min_minutes: postDelayMin.value,
+        post_delay_max_minutes: postDelayMax.value,
+        posts_per_run_cap: postsPerRunCap.value,
       }),
     });
     const note = document.getElementById('saveNote');
@@ -650,6 +692,14 @@
       autoFallback.checked = s.ai_auto_fallback === 'true';
       leadCriteria.value = s.lead_criteria_prompt || '';
       commentStyle.value = s.comment_style_notes || '';
+      quietStart.value = s.quiet_hours_start ?? '';
+      quietEnd.value = s.quiet_hours_end ?? '';
+      startupJitter.value = s.startup_jitter_max_minutes ?? '5';
+      autopostEnabled.checked = s.autopost_enabled === 'true';
+      autopostDryRun.checked = s.autopost_dry_run !== 'false';
+      postDelayMin.value = s.post_delay_min_minutes ?? '15';
+      postDelayMax.value = s.post_delay_max_minutes ?? '180';
+      postsPerRunCap.value = s.posts_per_run_cap ?? '1';
     } catch(e) { localStorage.removeItem('lr_secret'); }
   }
 

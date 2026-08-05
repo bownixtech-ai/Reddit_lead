@@ -81,6 +81,18 @@
   .draft-box .box-text{ color:var(--ink); }
   .box-more{ margin-top:7px; background:none; border:none; color:var(--blue); font-size:12.5px; font-weight:700; padding:0; }
 
+  .scan-row{ display:flex; align-items:flex-start; gap:11px; background:var(--surface); border:1px solid var(--line); border-radius:13px; padding:12px 14px; margin-bottom:9px; }
+  .scan-dot{ width:9px; height:9px; border-radius:50%; margin-top:5px; flex-shrink:0; }
+  .scan-dot.success{ background:#3DD68C; }
+  .scan-dot.partial{ background:#F5B94D; }
+  .scan-dot.error{ background:#F0554C; }
+  .scan-dot.running{ background:var(--ink-faint); }
+  .scan-row-main{ flex:1; min-width:0; }
+  .scan-row-top{ display:flex; justify-content:space-between; gap:8px; font-size:13px; font-weight:700; }
+  .scan-row-time{ color:var(--ink-faint); font-weight:600; font-size:11.5px; white-space:nowrap; }
+  .scan-row-detail{ font-size:12.5px; color:var(--ink-dim); margin-top:3px; line-height:1.4; }
+  .scan-empty{ color:var(--ink-faint); font-size:13px; padding:20px 4px; text-align:center; }
+
   .lead-actions{ display:flex; gap:8px; }
   .act-primary{ flex:1; display:flex; align-items:center; justify-content:center; gap:8px; background:var(--blue); color:#fff; border:none; border-radius:13px; height:48px; font-size:14.5px; font-weight:700; }
   .act-primary.done{ background:var(--surface-2); color:var(--ink-faint); }
@@ -239,11 +251,13 @@
 
     <!-- SCREEN 4 -->
     <div class="view" id="view-analytics">
-      <div class="placeholder-view">
+      <div class="section-label">Recent scans</div>
+      <div id="scanLogList"></div>
+      <div class="placeholder-view" style="margin-top:20px;">
         <div class="ph-mark" style="background:var(--navy); color:var(--ink); border:1px solid var(--navy-line);">
           <svg width="27" height="27" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         </div>
-        <h3>Analytics</h3>
+        <h3>More analytics</h3>
         <p>Lead volume, follow-through rate, CSV export — coming next.</p>
       </div>
     </div>
@@ -382,6 +396,37 @@
     document.getElementById('statPosted').textContent = postedCount ?? 0;
     document.getElementById('statSubs').textContent = subsCount ?? 0;
     document.getElementById('navCount').textContent = newCount ?? 0;
+  }
+
+  async function loadScanLog(){
+    const el = document.getElementById('scanLogList');
+    const { data, error } = await sb.from('scan_log').select('*').order('started_at', {ascending:false}).limit(20);
+    if (error || !data || !data.length) {
+      el.innerHTML = `<div class="scan-empty">No scans logged yet.</div>`;
+      return;
+    }
+    el.innerHTML = data.map(row => {
+      const status = row.status || 'running';
+      const label = status === 'success' ? 'Success'
+                  : status === 'partial' ? 'Partial'
+                  : status === 'error' ? 'Failed'
+                  : 'Running…';
+      let detail = `${row.posts_processed ?? 0} processed`;
+      if (row.posts_failed) detail += `, ${row.posts_failed} failed`;
+      if (row.subs_scanned) detail += ` · ${row.subs_scanned} sub(s)`;
+      if (row.error_reason) detail += ` — ${escapeHtml(row.error_reason)}`;
+      return `
+        <div class="scan-row">
+          <div class="scan-dot ${status}"></div>
+          <div class="scan-row-main">
+            <div class="scan-row-top">
+              <span>${label}</span>
+              <span class="scan-row-time">${timeAgo(row.started_at)}</span>
+            </div>
+            <div class="scan-row-detail">${detail}</div>
+          </div>
+        </div>`;
+    }).join('');
   }
 
   async function loadSubTabs(){
@@ -612,6 +657,7 @@
       document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
       document.getElementById(`view-${btn.dataset.view}`).classList.add('active');
       if(btn.dataset.view === 'ai'){ loadSubList(); loadScanFields(); tryAutoUnlock(); }
+      if(btn.dataset.view === 'analytics'){ loadScanLog(); }
     });
   });
 

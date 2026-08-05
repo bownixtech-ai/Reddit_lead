@@ -70,6 +70,16 @@
   .lead-time{ font-family:var(--mono); font-size:11.5px; color:var(--ink-dim); margin-top:3px; }
   .lead-card.posted .lead-sub, .lead-card.posted .lead-time{ color:var(--ink-faint); }
   .posted-tag{ margin-left:auto; display:flex; align-items:center; gap:5px; background:var(--surface-2); color:var(--ink-dim); font-size:11px; font-weight:700; padding:6px 10px; border-radius:999px; }
+  .ai-badge{ margin-left:auto; font-size:11px; font-weight:700; padding:6px 10px; border-radius:999px; background:var(--surface-2); color:var(--ink-dim); }
+  .ai-badge.is-lead{ background:var(--blue); color:#fff; }
+
+  .lead-title{ font-size:14.5px; font-weight:700; line-height:1.35; margin-bottom:11px; }
+
+  .post-box, .draft-box{ background:var(--bg); border:1px solid var(--line); border-radius:13px; padding:11px 13px; margin-bottom:11px; }
+  .box-label{ font-size:10.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:5px; }
+  .box-text{ font-size:13.5px; line-height:1.55; color:var(--ink-dim); white-space:pre-wrap; }
+  .draft-box .box-text{ color:var(--ink); }
+  .box-more{ margin-top:7px; background:none; border:none; color:var(--blue); font-size:12.5px; font-weight:700; padding:0; }
 
   .lead-actions{ display:flex; gap:8px; }
   .act-primary{ flex:1; display:flex; align-items:center; justify-content:center; gap:8px; background:var(--blue); color:#fff; border:none; border-radius:13px; height:48px; font-size:14.5px; font-weight:700; }
@@ -141,11 +151,6 @@
         <div class="stat plain"><span class="stat-num" id="statPosted">–</span><span class="stat-key">Posted</span></div>
         <div class="stat plain"><span class="stat-num" id="statSubs">–</span><span class="stat-key">Subs</span></div>
       </div>
-
-      <button class="scan-now-btn" id="scanNowBtn">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
-        <span id="scanNowText">Scan now</span>
-      </button>
 
       <button class="missed-chip" id="missedChip">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -294,8 +299,16 @@
     return Math.floor(diff/86400)+'d ago';
   }
 
+  function escapeHtml(str){
+    return (str || '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
   function cardHTML(lead){
     const posted = lead.status === 'posted';
+    const isLead = !!lead.is_lead;
+    const bodyText = (lead.post_body || '').trim();
+    const showToggle = bodyText.length > 220;
+    const bodyPreview = showToggle ? bodyText.slice(0, 220) + '…' : bodyText;
     return `
       <div class="lead-card ${posted?'posted':''}" data-id="${lead.id}" data-permalink="${lead.permalink}">
         <div class="lead-top">
@@ -304,7 +317,19 @@
             <div class="lead-sub">r/${lead.subreddit}</div>
             <div class="lead-time">${timeAgo(lead.created_utc)}</div>
           </div>
-          ${posted?`<span class="posted-tag">${ic('check',11)} Posted</span>`:''}
+          ${posted?`<span class="posted-tag">${ic('check',11)} Posted</span>`
+                   :`<span class="ai-badge ${isLead?'is-lead':'not-lead'}">AI: ${isLead?'Lead':'Not lead'}</span>`}
+        </div>
+        ${lead.title ? `<div class="lead-title">${escapeHtml(lead.title)}</div>` : ''}
+        ${bodyText ? `
+        <div class="post-box">
+          <div class="box-label">Post</div>
+          <div class="box-text" data-preview="${escapeHtml(bodyPreview)}" data-fulltext="${escapeHtml(bodyText)}">${escapeHtml(showToggle ? bodyPreview : bodyText)}</div>
+          ${showToggle ? `<button class="box-more" data-action="toggle-body" data-expanded="0">Show more</button>` : ''}
+        </div>` : ''}
+        <div class="draft-box">
+          <div class="box-label">AI draft</div>
+          <div class="box-text">${escapeHtml(lead.draft_comment) || '<span class="ink-faint">(no draft)</span>'}</div>
         </div>
         <div class="lead-actions">
           <button class="act-primary ${posted?'done':''}" data-action="post">${posted?ic('check',15):ic('send',15)} ${posted?'Posted':'Copy & Post'}</button>
@@ -326,9 +351,9 @@
 
   async function loadLeads(){
     const now = Math.floor(Date.now()/1000);
-    let activeQ = sb.from('leads').select('*').eq('is_lead', true).neq('status','deleted')
+    let activeQ = sb.from('leads').select('*').neq('status','deleted')
       .eq('status','new').gte('created_utc', now - freshnessSecs).order('created_utc', {ascending:false});
-    let missedQ = sb.from('leads').select('*').eq('is_lead', true).neq('status','deleted')
+    let missedQ = sb.from('leads').select('*').neq('status','deleted')
       .eq('status','new').lt('created_utc', now - freshnessSecs).order('created_utc', {ascending:false});
     if (activeTab !== 'All') { activeQ = activeQ.eq('subreddit', activeTab); missedQ = missedQ.eq('subreddit', activeTab); }
 
@@ -344,8 +369,8 @@
   async function loadStats(){
     const now = Math.floor(Date.now()/1000);
     const [{count:newCount}, {count:postedCount}, {count:subsCount}] = await Promise.all([
-      sb.from('leads').select('*',{count:'exact',head:true}).eq('is_lead',true).eq('status','new').gte('created_utc', now-freshnessSecs),
-      sb.from('leads').select('*',{count:'exact',head:true}).eq('is_lead',true).eq('status','posted'),
+      sb.from('leads').select('*',{count:'exact',head:true}).eq('status','new').gte('created_utc', now-freshnessSecs),
+      sb.from('leads').select('*',{count:'exact',head:true}).eq('status','posted'),
       sb.from('subreddits').select('*',{count:'exact',head:true}).eq('active',true),
     ]);
     document.getElementById('statNew').textContent = newCount ?? 0;
@@ -399,6 +424,16 @@
         showToast('Removed');
         setTimeout(()=>{ loadLeads(); loadStats(); }, 260);
       });
+      const moreBtn = card.querySelector('[data-action="toggle-body"]');
+      if (moreBtn) {
+        moreBtn.addEventListener('click', () => {
+          const box = card.querySelector('.post-box .box-text');
+          const expanded = moreBtn.dataset.expanded === '1';
+          box.textContent = expanded ? box.dataset.preview : box.dataset.fulltext;
+          moreBtn.textContent = expanded ? 'Show more' : 'Show less';
+          moreBtn.dataset.expanded = expanded ? '0' : '1';
+        });
+      }
     });
   }
 
@@ -411,37 +446,13 @@
     tt = setTimeout(()=>toast.classList.remove('show'), 2300);
   }
 
-  // Scan Now — writes a fresh timestamp to the open `triggers` table.
-  // Task Hub (running on the laptop) polls this table every ~20s and runs
-  // the scanner job as soon as it sees a new value. No password needed —
-  // this table has the same open RLS policy as `leads`/`subreddits`.
-  document.getElementById('scanNowBtn').addEventListener('click', async () => {
-    const btn = document.getElementById('scanNowBtn');
-    const label = document.getElementById('scanNowText');
-    btn.disabled = true;
-    btn.classList.add('spinning');
-    label.textContent = 'Requested…';
-    try {
-      await sb.from('triggers').update({ value: Date.now() }).eq('key', 'scan_now');
-      showToast('Scan requested — laptop will pick it up shortly');
-    } catch (e) {
-      showToast('Could not request scan — check connection');
-    }
-    setTimeout(() => {
-      btn.disabled = false;
-      btn.classList.remove('spinning');
-      label.textContent = 'Scan now';
-      loadLeads(); loadStats();
-    }, 3000);
-  });
-
   document.getElementById('missedChip').addEventListener('click', () => {
     document.getElementById('missedWrap').classList.toggle('open');
     document.getElementById('missedChip').classList.toggle('open');
   });
   document.getElementById('clearMissed').addEventListener('click', async () => {
     const now = Math.floor(Date.now()/1000);
-    let q = sb.from('leads').update({status:'deleted'}).eq('is_lead',true).eq('status','new').lt('created_utc', now-freshnessSecs);
+    let q = sb.from('leads').update({status:'deleted'}).eq('status','new').lt('created_utc', now-freshnessSecs);
     if (activeTab !== 'All') q = q.eq('subreddit', activeTab);
     await q;
     showToast('Missed queue cleared');

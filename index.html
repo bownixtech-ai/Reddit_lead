@@ -407,20 +407,24 @@
     }
     el.innerHTML = data.map(row => {
       const status = row.status || 'running';
+      const isPost = row.job_type === 'post';
       const label = status === 'success' ? 'Success'
                   : status === 'partial' ? 'Partial'
                   : status === 'error' ? 'Failed'
                   : 'Running…';
-      let detail = `${row.posts_processed ?? 0} processed`;
+      const kind = isPost ? 'Post' : 'Scan';
+      let detail = isPost
+        ? `${row.posts_processed ?? 0} posted`
+        : `${row.posts_processed ?? 0} processed`;
       if (row.posts_failed) detail += `, ${row.posts_failed} failed`;
-      if (row.subs_scanned) detail += ` · ${row.subs_scanned} sub(s)`;
+      if (!isPost && row.subs_scanned) detail += ` · ${row.subs_scanned} sub(s)`;
       if (row.error_reason) detail += ` — ${escapeHtml(row.error_reason)}`;
       return `
         <div class="scan-row">
           <div class="scan-dot ${status}"></div>
           <div class="scan-row-main">
             <div class="scan-row-top">
-              <span>${label}</span>
+              <span>${kind} · ${label}</span>
               <span class="scan-row-time">${timeAgo(row.started_at)}</span>
             </div>
             <div class="scan-row-detail">${detail}</div>

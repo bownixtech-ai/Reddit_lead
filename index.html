@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lead Radar</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#3B82F6">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  :root{
+    --bg:#0F1115; --surface:#191B20; --surface-2:#21242A;
+    --line:#2C2F36; --line-hi:#383C44;
+    --ink:#F1F2F4; --ink-dim:#98A0AC; --ink-faint:#656B75;
+    --blue:#3B82F6; --navy:#152238; --navy-line:#28406E;
+    --bounce:cubic-bezier(.34,1.56,.64,1);
+    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{ margin:0; background:var(--bg); font-family:var(--sans); color:var(--ink); }
+  .app{ max-width:480px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column; position:relative; }
+
+  .app-header{ padding:22px 22px 14px; display:flex; align-items:center; justify-content:space-between; }
+  .brand{ display:flex; align-items:center; gap:11px; }
+  .brand-mark{ width:32px; height:32px; border-radius:10px; background:var(--blue); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:15px; color:#fff; }
+  .brand-word{ font-weight:800; font-size:19px; letter-spacing:-.3px; }
+
+  .screen{ flex:1; overflow-y:auto; padding:0 20px 100px; }
+  .view{ display:none; } .view.active{ display:block; animation:viewIn .3s ease both; }
+  @keyframes viewIn{ from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);} }
+
+  .stat-row{ display:flex; gap:10px; padding:4px 0 18px; }
+  .stat{ flex:1; border-radius:16px; padding:14px 14px 12px; }
+  .stat.primary{ background:var(--blue); color:#fff; }
+  .stat.plain{ background:var(--surface); border:1px solid var(--line); }
+  .stat-num{ font-weight:800; font-size:32px; line-height:1; display:block; }
+  .stat.plain .stat-num{ color:var(--ink); }
+  .stat-key{ font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; margin-top:6px; display:block; opacity:.85; }
+  .stat.plain .stat-key{ color:var(--ink-faint); opacity:1; }
+
+  .missed-chip{ display:flex; align-items:center; gap:9px; width:100%; background:var(--blue); color:#fff; border:none; padding:13px 16px; border-radius:15px; font-size:14.5px; font-weight:700; margin-bottom:18px; }
+  .missed-chip svg.chev{ margin-left:auto; transition:transform .25s var(--bounce); }
+  .missed-chip.open svg.chev{ transform:rotate(180deg); }
+
+  .scan-now-btn{ display:flex; align-items:center; justify-content:center; gap:8px; width:100%; background:var(--surface); border:1px solid var(--line); color:var(--ink-dim); padding:12px 16px; border-radius:15px; font-size:13.5px; font-weight:700; margin-bottom:12px; }
+  .scan-now-btn:active{ transform:scale(.98); }
+  .scan-now-btn.spinning svg{ animation:spin 1s linear infinite; }
+  .scan-now-btn:disabled{ opacity:.6; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  .tabstrip{ display:flex; gap:9px; overflow-x:auto; padding:2px 2px 18px; }
+  .tab{ flex-shrink:0; font-size:14.5px; font-weight:700; padding:10px 16px; border-radius:12px; background:var(--surface-2); border:1px solid var(--line); color:var(--ink-dim); }
+  .tab.active{ background:var(--blue); color:#fff; border-color:var(--blue); }
+
+  .section-label{ font-size:12px; text-transform:uppercase; letter-spacing:.8px; color:var(--ink-faint); font-weight:700; margin:4px 2px 12px; display:flex; align-items:center; justify-content:space-between; }
+  .clear-all, .link-btn{ font-size:13px; color:var(--blue); font-weight:700; background:none; border:none; }
+
+  .lead-list{ display:flex; flex-direction:column; gap:13px; }
+  @keyframes cardIn{ from{opacity:0; transform:translateY(14px) scale(.97);} to{opacity:1; transform:translateY(0) scale(1);} }
+  .lead-card{ border-radius:20px; padding:17px; background:var(--navy); border:1px solid var(--navy-line); animation:cardIn .4s var(--bounce) both; }
+  .lead-card.posted{ background:var(--surface); border-color:var(--line); }
+  .lead-card.removing{ opacity:0; transform:scale(.92); max-height:0; padding:0; margin:0; border-width:0; overflow:hidden; }
+
+  .lead-top{ display:flex; align-items:center; gap:12px; margin-bottom:15px; }
+  .lead-icon{ width:40px; height:40px; border-radius:12px; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:var(--blue); color:#fff; }
+  .lead-card.posted .lead-icon{ background:var(--surface-2); color:var(--ink-faint); }
+  .lead-sub{ font-weight:700; font-size:17.5px; word-break:break-word; }
+  .lead-time{ font-family:var(--mono); font-size:11.5px; color:var(--ink-dim); margin-top:3px; }
+  .lead-card.posted .lead-sub, .lead-card.posted .lead-time{ color:var(--ink-faint); }
+  .posted-tag{ margin-left:auto; display:flex; align-items:center; gap:5px; background:var(--surface-2); color:var(--ink-dim); font-size:11px; font-weight:700; padding:6px 10px; border-radius:999px; flex-shrink:0; }
+
+  .lead-title{ font-size:14.5px; font-weight:700; line-height:1.35; margin-bottom:11px; }
+
+  .post-box, .draft-box{ background:var(--bg); border:1px solid var(--line); border-radius:13px; padding:11px 13px; margin-bottom:11px; }
+  .box-label{ font-size:10.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:5px; }
+  .box-text{ font-size:13.5px; line-height:1.55; color:var(--ink-dim); white-space:pre-wrap; }
+  .draft-box .box-text{ color:var(--ink); }
+  .box-more{ margin-top:7px; background:none; border:none; color:var(--blue); font-size:12.5px; font-weight:700; padding:0; }
+
+  .scan-row{ display:flex; align-items:flex-start; gap:11px; background:var(--surface); border:1px solid var(--line); border-radius:13px; padding:12px 14px; margin-bottom:9px; }
+  .scan-dot{ width:9px; height:9px; border-radius:50%; margin-top:5px; flex-shrink:0; }
+  .scan-dot.success{ background:#3DD68C; }
+  .scan-dot.partial{ background:#F5B94D; }
+  .scan-dot.error{ background:#F0554C; }
+  .scan-dot.running{ background:var(--ink-faint); }
+  .scan-row-main{ flex:1; min-width:0; }
+  .scan-row-top{ display:flex; justify-content:space-between; gap:8px; font-size:13px; font-weight:700; }
+  .scan-row-time{ color:var(--ink-faint); font-weight:600; font-size:11.5px; white-space:nowrap; }
+  .scan-row-detail{ font-size:12.5px; color:var(--ink-dim); margin-top:3px; line-height:1.4; }
+  .scan-empty{ color:var(--ink-faint); font-size:13px; padding:20px 4px; text-align:center; }
+
+  .lead-actions{ display:flex; gap:8px; }
+  .act-primary{ flex:1; display:flex; align-items:center; justify-content:center; gap:8px; background:var(--blue); color:#fff; border:none; border-radius:13px; height:48px; font-size:14.5px; font-weight:700; }
+  .act-primary.done{ background:var(--surface-2); color:var(--ink-faint); }
+  .act-ghost{ width:48px; height:48px; border-radius:13px; flex-shrink:0; border:none; background:var(--surface-2); color:var(--ink); display:flex; align-items:center; justify-content:center; }
+
+  .edit-box{ display:none; margin-top:13px; }
+  .edit-box.open{ display:block; }
+  .edit-box textarea{ width:100%; min-height:78px; resize:none; background:var(--bg); border:1px solid var(--line-hi); border-radius:13px; padding:12px 13px; color:var(--ink); font-family:var(--sans); font-size:14px; line-height:1.5; outline:none; }
+  .edit-box textarea:focus{ border-color:var(--blue); }
+  .edit-save{ margin-top:8px; background:var(--blue); color:#fff; border:none; padding:9px 14px; border-radius:10px; font-size:13px; font-weight:700; }
+
+  #missedWrap{ display:none; margin-top:8px; } #missedWrap.open{ display:block; }
+
+  .field{ margin-bottom:16px; }
+  .field label{ display:block; font-size:12.5px; font-weight:700; color:var(--ink-dim); margin-bottom:7px; text-transform:uppercase; letter-spacing:.5px; }
+  .field input, .field select, .field textarea{
+    width:100%; background:var(--surface-2); border:1px solid var(--line); border-radius:12px;
+    padding:12px 13px; color:var(--ink); font-family:var(--sans); font-size:14.5px; outline:none;
+  }
+  .field textarea{ resize:vertical; min-height:80px; line-height:1.5; }
+  .field input:focus, .field select:focus, .field textarea:focus{ border-color:var(--blue); }
+  .row2{ display:flex; gap:10px; } .row2 > *{ flex:1; }
+  .card-block{ background:var(--surface); border:1px solid var(--line); border-radius:18px; padding:18px; margin-bottom:16px; }
+  .card-block h4{ margin:0 0 14px; font-size:15px; }
+  .save-btn{ width:100%; background:var(--blue); color:#fff; border:none; border-radius:13px; height:50px; font-size:15px; font-weight:700; margin-top:4px; }
+  .sub-row{ display:flex; align-items:center; gap:10px; background:var(--surface-2); border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:8px; }
+  .sub-row span{ font-weight:600; font-size:14px; flex:1; min-width:0; }
+  .sub-row button{ background:none; border:none; color:var(--ink-faint); flex-shrink:0; }
+  .add-sub{ display:flex; gap:8px; margin-top:6px; }
+  .add-sub input{ flex:1; }
+  .add-sub button{ background:var(--blue); color:#fff; border:none; border-radius:12px; padding:0 16px; font-weight:700; }
+  .toggle-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:6px 0; }
+  .toggle-row label{ text-transform:none; font-weight:600; color:var(--ink); font-size:14.5px; margin:0; letter-spacing:0; }
+  .toggle-row input[type=checkbox]{ width:22px; height:22px; flex-shrink:0; }
+  .save-note{ font-size:12px; color:var(--ink-faint); text-align:center; margin-top:-8px; margin-bottom:12px; height:14px; }
+  .locked-note{ font-size:12.5px; color:var(--ink-faint); line-height:1.5; margin-bottom:14px; }
+
+  .navbar{ position:fixed; left:0; right:0; bottom:0; max-width:480px; margin:0 auto; display:flex; background:var(--surface); border-top:1px solid var(--line); z-index:20; }
+  .nav-btn{ flex:1; height:68px; border:none; background:transparent; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; color:var(--ink-faint); position:relative; }
+  .nav-btn.active{ color:var(--blue); }
+  .nav-btn.active::before{ content:""; position:absolute; top:0; left:22%; right:22%; height:3px; background:var(--blue); border-radius:0 0 4px 4px; }
+  .nav-count{ position:absolute; top:8px; right:20%; background:var(--blue); color:#fff; font-family:var(--mono); font-size:10px; font-weight:700; min-width:16px; height:16px; padding:0 3px; border-radius:8px; display:flex; align-items:center; justify-content:center; }
+  .nav-label{ font-size:10px; font-weight:700; }
+
+  .toast{ position:fixed; left:16px; right:16px; bottom:88px; max-width:448px; margin:0 auto; z-index:30; background:var(--blue); color:#fff; padding:14px 17px; border-radius:15px; display:flex; align-items:center; gap:10px; font-size:13.5px; font-weight:700; transform:translateY(240px); transition:transform .35s var(--bounce); pointer-events:none; }
+  .toast.show{ transform:translateY(0); }
+
+  .placeholder-view{ display:flex; flex-direction:column; align-items:center; text-align:center; gap:15px; padding:76px 16px; color:var(--ink-faint); }
+  .ph-mark{ width:56px; height:56px; border-radius:16px; display:flex; align-items:center; justify-content:center; }
+  .placeholder-view h3{ color:var(--ink); font-size:19px; margin:0; font-weight:800; }
+  .placeholder-view p{ font-size:13.5px; max-width:230px; line-height:1.55; margin:0; }
+
+  .empty{ color:var(--ink-faint); font-size:13.5px; padding:18px 4px; }
+  svg{ display:block; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="app-header">
+    <div class="brand"><span class="brand-mark">R</span><span class="brand-word">Lead Radar</span></div>
+  </div>
+
+  <div class="screen">
+
+    <!-- SCREEN 1 — LEADS -->
+    <div class="view active" id="view-leads">
+      <div class="stat-row">
+        <div class="stat primary"><span class="stat-num" id="statNew">–</span><span class="stat-key">New</span></div>
+        <div class="stat plain"><span class="stat-num" id="statPosted">–</span><span class="stat-key">Posted</span></div>
+        <div class="stat plain"><span class="stat-num" id="statSubs">–</span><span class="stat-key">Subs</span></div>
+      </div>
+
+      <button class="scan-now-btn" id="scanNowBtn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        <span id="scanNowText">Scan now</span>
+      </button>
+
+      <button class="missed-chip" id="missedChip">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span id="missedChipText">Missed — tap to review</span>
+        <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+
+      <div class="tabstrip" id="tabstrip"></div>
+
+      <div class="section-label">New</div>
+      <div class="lead-list" id="activeList"><div class="empty">Loading…</div></div>
+
+      <div id="missedWrap">
+        <div class="section-label" style="margin-top:22px;">Missed <button class="clear-all" id="clearMissed">Clear all</button></div>
+        <div class="lead-list" id="missedList"></div>
+      </div>
+    </div>
+
+    <!-- SCREEN — MY POSTS (reply generator for your own posts) -->
+    <div class="view" id="view-myposts">
+      <button class="scan-now-btn" id="fetchNowBtn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        <span id="fetchNowText">Fetch now</span>
+      </button>
+
+      <div class="section-label">Monitored posts</div>
+      <div class="card-block">
+        <div id="mpList"></div>
+        <div class="field" style="margin-top:6px;"><label>Post URL</label><input id="mpUrl" placeholder="https://www.reddit.com/r/…/comments/…"></div>
+        <div class="row2">
+          <div class="field"><label>Skip author (your username)</label><input id="mpAuthor" placeholder="your_reddit_name"></div>
+          <div class="field"><label>Check every (min)</label><input id="mpInterval" type="number" min="5" step="5" value="30"></div>
+        </div>
+        <button class="save-btn" id="mpAddBtn">Add post</button>
+      </div>
+
+      <div class="section-label">New replies</div>
+      <div class="lead-list" id="replyList"><div class="empty">Loading…</div></div>
+    </div>
+
+    <!-- SCREEN — AI (keys + prompts) -->
+    <div class="view" id="view-ai">
+      <div class="section-label">AI settings <button class="link-btn" id="unlockBtn">Unlock</button></div>
+      <div class="card-block" id="lockedBlock">
+        <p class="locked-note">API keys and prompt text are password-protected. Enter the app password you set in Supabase (<code>APP_SECRET</code>) to view or edit them.</p>
+        <div class="field"><input id="unlockPw" type="password" placeholder="app password"></div>
+        <button class="save-btn" id="unlockGo">Unlock</button>
+      </div>
+
+      <div id="aiFields" style="display:none;">
+        <div class="card-block">
+          <h4>Primary — Qwen</h4>
+          <div class="field"><label>API key</label><input id="primaryKey" type="password" placeholder="sk-..."></div>
+          <div class="field"><label>Model</label><input id="primaryModel" placeholder="qwen-plus"></div>
+          <div class="field"><label>Token budget (free-tier limit)</label><input id="primaryBudget" type="number" step="1"></div>
+        </div>
+        <div class="card-block">
+          <h4>Fallback — Anthropic</h4>
+          <div class="field"><label>API key</label><input id="fallbackKey" type="password" placeholder="sk-ant-..."></div>
+          <div class="field"><label>Model</label><input id="fallbackModel" placeholder="claude-haiku-4-5-20251001"></div>
+          <div class="toggle-row"><label>Auto-switch when primary fails or budget is spent</label><input id="autoFallback" type="checkbox"></div>
+        </div>
+        <div class="section-label">Timing</div>
+        <div class="card-block">
+          <h4>Quiet hours &amp; jitter</h4>
+          <div class="row2">
+            <div class="field"><label>Quiet start (0-23, blank=off)</label><input id="quietStart" type="number" min="0" max="23" step="1"></div>
+            <div class="field"><label>Quiet end (0-23)</label><input id="quietEnd" type="number" min="0" max="23" step="1"></div>
+          </div>
+          <div class="field"><label>Startup jitter, max minutes</label><input id="startupJitter" type="number" min="0" step="1"></div>
+        </div>
+        <div class="section-label">Lead criteria (post comments)</div>
+        <div class="card-block"><div class="field"><textarea id="leadCriteria" rows="7"></textarea></div></div>
+        <div class="section-label">Comment style (post comments)</div>
+        <div class="card-block"><div class="field"><textarea id="commentStyle" rows="5"></textarea></div></div>
+        <div class="section-label">Reply style (your own posts)</div>
+        <div class="card-block"><div class="field"><textarea id="replyStyle" rows="6"></textarea></div></div>
+        <div class="save-note" id="saveNote"></div>
+        <button class="save-btn" id="saveSettings">Save AI settings</button>
+      </div>
+    </div>
+
+    <!-- SCREEN — SETTINGS (functions + sources) -->
+    <div class="view" id="view-settings">
+      <div class="section-label">Functions</div>
+      <div class="card-block">
+        <div class="toggle-row"><label>Post-comment scanner</label><input id="scanEnabledToggle" type="checkbox"></div>
+        <div class="toggle-row"><label>My-post reply responder</label><input id="replyEnabledToggle" type="checkbox"></div>
+        <p class="locked-note" style="margin-top:10px; margin-bottom:0;">Only one can run at a time — turning one on turns the other off. Requires unlocking AI settings once (to save).</p>
+      </div>
+
+      <div class="section-label">Subreddits (scanner)</div>
+      <div class="card-block">
+        <div id="subList"></div>
+        <div class="add-sub">
+          <input id="addSubInput" placeholder="subreddit name, no r/">
+          <button id="addSubBtn">Add</button>
+        </div>
+      </div>
+
+      <div class="section-label">Scan timing</div>
+      <div class="card-block">
+        <div class="row2">
+          <div class="field"><label>Scan interval (hours)</label><input id="scanInterval" type="number" min="1" max="24" step="1"></div>
+          <div class="field"><label>Missed after (hours)</label><input id="freshWindow" type="number" min="1" max="48" step="1"></div>
+        </div>
+        <p class="locked-note">Saving these requires unlocking AI settings once (they go through the same protected save).</p>
+      </div>
+    </div>
+
+    <!-- SCREEN — STATS -->
+    <div class="view" id="view-analytics">
+      <div class="section-label">Recent runs</div>
+      <div id="scanLogList"></div>
+    </div>
+
+  </div>
+
+  <div class="navbar">
+    <button class="nav-btn active" data-view="leads" aria-label="Leads">
+      <span class="nav-count" id="navCount">0</span>
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      <span class="nav-label">Leads</span>
+    </button>
+    <button class="nav-btn" data-view="myposts" aria-label="My posts">
+      <span class="nav-count" id="navCountReplies">0</span>
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+      <span class="nav-label">My Posts</span>
+    </button>
+    <button class="nav-btn" data-view="ai" aria-label="AI">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="1" y1="15" x2="4" y2="15"/><line x1="20" y1="15" x2="23" y2="15"/></svg>
+      <span class="nav-label">AI</span>
+    </button>
+    <button class="nav-btn" data-view="settings" aria-label="Settings">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+      <span class="nav-label">Settings</span>
+    </button>
+    <button class="nav-btn" data-view="analytics" aria-label="Stats">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      <span class="nav-label">Stats</span>
+    </button>
+  </div>
+
+  <div class="toast" id="toast">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    <span id="toastText"></span>
+  </div>
+</div>
+
+<script>
+  const SUPABASE_URL = "https://xwaqlcfoebkvhcejmziw.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_QmwLRHf94SVHYbtXV_YsBw_Nbt6Mjng";
+  const SETTINGS_API_URL = "https://xwaqlcfoebkvhcejmziw.supabase.co/functions/v1/settings-api";
+
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const ICONS = {
+    lead:'<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+    reply:'<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>',
+    send:'<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>',
+    edit:'<path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>',
+    eye:'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+    trash:'<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 012-2h2a2 2 0 012 2v2"/>',
+    check:'<polyline points="20 6 9 17 4 12"/>',
+    x:'<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>'
+  };
+  const ic = (n,w=16) => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${ICONS[n]}</svg>`;
+
+  let activeTab = 'All';
+  let freshnessSecs = 3 * 3600;
+
+  function timeAgo(unixSecs){
+    const diff = Math.max(0, Math.floor(Date.now()/1000) - unixSecs);
+    if(diff < 3600) return Math.floor(diff/60)+'m ago';
+    if(diff < 86400) return Math.floor(diff/3600)+'h '+Math.floor((diff%3600)/60)+'m ago';
+    return Math.floor(diff/86400)+'d ago';
+  }
+  function escapeHtml(str){
+    return (str || '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // ---------- Leads cards ----------
+  function cardHTML(lead){
+    const posted = lead.status === 'posted';
+    const bodyText = (lead.post_body || '').trim();
+    const showToggle = bodyText.length > 220;
+    const bodyPreview = showToggle ? bodyText.slice(0, 220) + '…' : bodyText;
+    return `
+      <div class="lead-card ${posted?'posted':''}" data-id="${lead.id}" data-permalink="${lead.permalink}">
+        <div class="lead-top">
+          <div class="lead-icon">${posted?ic('check'):ic('lead')}</div>
+          <div>
+            <div class="lead-sub">r/${lead.subreddit}</div>
+            <div class="lead-time">${timeAgo(lead.created_utc)}</div>
+          </div>
+          ${posted?`<span class="posted-tag">${ic('check',11)} Posted</span>`:''}
+        </div>
+        ${lead.title ? `<div class="lead-title">${escapeHtml(lead.title)}</div>` : ''}
+        ${bodyText ? `
+        <div class="post-box">
+          <div class="box-label">Post</div>
+          <div class="box-text" data-preview="${escapeHtml(bodyPreview)}" data-fulltext="${escapeHtml(bodyText)}">${escapeHtml(showToggle ? bodyPreview : bodyText)}</div>
+          ${showToggle ? `<button class="box-more" data-action="toggle-body" data-expanded="0">Show more</button>` : ''}
+        </div>` : ''}
+        <div class="draft-box">
+          <div class="box-label">AI draft</div>
+          <div class="box-text">${escapeHtml(lead.draft_comment) || '<span class="ink-faint">(no draft)</span>'}</div>
+        </div>
+        <div class="lead-actions">
+          <button class="act-primary ${posted?'done':''}" data-action="post">${posted?ic('check',15):ic('send',15)} ${posted?'Posted':'Copy & Post'}</button>
+          <button class="act-ghost" data-action="edit"   aria-label="Edit comment">${ic('edit')}</button>
+          <button class="act-ghost" data-action="view"   aria-label="View post">${ic('eye')}</button>
+          <button class="act-ghost" data-action="delete" aria-label="Delete">${ic('trash')}</button>
+        </div>
+        <div class="edit-box">
+          <textarea rows="3">${lead.draft_comment || ''}</textarea>
+          <button class="edit-save" data-action="save-edit">Save edit</button>
+        </div>
+      </div>`;
+  }
+
+  async function loadFreshnessWindow(){
+    const { data } = await sb.from('settings').select('value').eq('key','freshness_window_hours').maybeSingle();
+    if (data) freshnessSecs = Number(data.value) * 3600;
+  }
+
+  async function loadLeads(){
+    const now = Math.floor(Date.now()/1000);
+    let activeQ = sb.from('leads').select('*').neq('status','deleted').eq('status','new').gte('created_utc', now - freshnessSecs).order('created_utc', {ascending:false});
+    let missedQ = sb.from('leads').select('*').neq('status','deleted').eq('status','new').lt('created_utc', now - freshnessSecs).order('created_utc', {ascending:false});
+    if (activeTab !== 'All') { activeQ = activeQ.eq('subreddit', activeTab); missedQ = missedQ.eq('subreddit', activeTab); }
+    const [{data:active}, {data:missed}] = await Promise.all([activeQ, missedQ]);
+    document.getElementById('activeList').innerHTML = (active && active.length) ? active.map(cardHTML).join('') : `<div class="empty">Nothing here.</div>`;
+    document.getElementById('missedList').innerHTML = (missed||[]).map(cardHTML).join('');
+    document.getElementById('missedChipText').textContent = `${(missed||[]).length} missed — tap to review`;
+    document.getElementById('missedChip').style.display = (missed||[]).length ? 'flex' : 'none';
+    bindCards();
+  }
+
+  async function loadStats(){
+    const now = Math.floor(Date.now()/1000);
+    const [{count:newCount}, {count:postedCount}, {count:subsCount}] = await Promise.all([
+      sb.from('leads').select('*',{count:'exact',head:true}).eq('status','new').gte('created_utc', now-freshnessSecs),
+      sb.from('leads').select('*',{count:'exact',head:true}).eq('status','posted'),
+      sb.from('subreddits').select('*',{count:'exact',head:true}).eq('active',true),
+    ]);
+    document.getElementById('statNew').textContent = newCount ?? 0;
+    document.getElementById('statPosted').textContent = postedCount ?? 0;
+    document.getElementById('statSubs').textContent = subsCount ?? 0;
+    document.getElementById('navCount').textContent = newCount ?? 0;
+  }
+
+  async function loadScanLog(){
+    const el = document.getElementById('scanLogList');
+    const { data, error } = await sb.from('scan_log').select('*').order('started_at', {ascending:false}).limit(20);
+    if (error || !data || !data.length) { el.innerHTML = `<div class="scan-empty">No runs logged yet.</div>`; return; }
+    el.innerHTML = data.map(row => {
+      const status = row.status || 'running';
+      const isReply = row.job_type === 'reply';
+      const isPost = row.job_type === 'post';
+      const label = status === 'success' ? 'Success' : status === 'partial' ? 'Partial' : status === 'error' ? 'Failed' : 'Running…';
+      const kind = isReply ? 'Replies' : isPost ? 'Post' : 'Scan';
+      let detail = `${row.posts_processed ?? 0} processed`;
+      if (row.posts_failed) detail += `, ${row.posts_failed} failed`;
+      if (row.subs_scanned) detail += ` · ${row.subs_scanned} ${isReply?'post(s)':'sub(s)'}`;
+      if (row.error_reason) detail += ` — ${escapeHtml(row.error_reason)}`;
+      return `<div class="scan-row"><div class="scan-dot ${status}"></div><div class="scan-row-main">
+        <div class="scan-row-top"><span>${kind} · ${label}</span><span class="scan-row-time">${timeAgo(row.started_at)}</span></div>
+        <div class="scan-row-detail">${detail}</div></div></div>`;
+    }).join('');
+  }
+
+  async function loadSubTabs(){
+    const { data: subs } = await sb.from('subreddits').select('name').order('name');
+    const allSubs = ['All', ...(subs||[]).map(s=>s.name)];
+    const strip = document.getElementById('tabstrip');
+    strip.innerHTML = '';
+    allSubs.forEach(s => {
+      const t = document.createElement('button');
+      t.className = 'tab' + (s===activeTab?' active':'');
+      t.textContent = s==='All' ? 'All' : `r/${s}`;
+      t.addEventListener('click', ()=>{ activeTab=s; loadSubTabs(); loadLeads(); });
+      strip.appendChild(t);
+    });
+  }
+
+  function bindCards(){
+    document.querySelectorAll('#activeList .lead-card, #missedList .lead-card').forEach(card => {
+      const id = card.dataset.id;
+      card.querySelector('[data-action="post"]').addEventListener('click', async () => {
+        if(card.classList.contains('posted')) return;
+        const draft = card.querySelector('.edit-box textarea').value;
+        try { await navigator.clipboard.writeText(draft); } catch(e) {}
+        await sb.from('leads').update({status:'posted', posted_at: Math.floor(Date.now()/1000)}).eq('id', id);
+        showToast('Copied · marked posted');
+        window.open(`https://www.reddit.com${card.dataset.permalink||''}`, '_blank');
+        loadLeads(); loadStats();
+      });
+      card.querySelector('[data-action="view"]').addEventListener('click', () => window.open(`https://www.reddit.com${card.dataset.permalink||''}`, '_blank'));
+      card.querySelector('[data-action="edit"]').addEventListener('click', () => card.querySelector('.edit-box').classList.toggle('open'));
+      card.querySelector('[data-action="save-edit"]').addEventListener('click', async () => {
+        const text = card.querySelector('.edit-box textarea').value;
+        const { data: before } = await sb.from('leads').select('draft_comment').eq('id', id).maybeSingle();
+        await sb.from('leads').update({draft_comment: text, edited: true}).eq('id', id);
+        if (before) await sb.from('edits').insert({ lead_id: id, before_text: before.draft_comment || '', after_text: text });
+        showToast('Edit saved');
+      });
+      card.querySelector('[data-action="delete"]').addEventListener('click', async () => {
+        card.classList.add('removing');
+        await sb.from('leads').update({status:'deleted'}).eq('id', id);
+        showToast('Removed');
+        setTimeout(()=>{ loadLeads(); loadStats(); }, 260);
+      });
+      bindToggleBody(card);
+    });
+  }
+
+  function bindToggleBody(card){
+    const moreBtn = card.querySelector('[data-action="toggle-body"]');
+    if (moreBtn) moreBtn.addEventListener('click', () => {
+      const box = card.querySelector('.post-box .box-text');
+      const expanded = moreBtn.dataset.expanded === '1';
+      box.textContent = expanded ? box.dataset.preview : box.dataset.fulltext;
+      moreBtn.textContent = expanded ? 'Show more' : 'Show less';
+      moreBtn.dataset.expanded = expanded ? '0' : '1';
+    });
+  }
+
+  // ---------- My Posts: monitored posts + replies ----------
+  function replyCardHTML(r){
+    const posted = r.status === 'posted';
+    const c = (r.comment_body||'').trim();
+    const showToggle = c.length > 220;
+    const preview = showToggle ? c.slice(0,220)+'…' : c;
+    return `
+      <div class="lead-card ${posted?'posted':''}" data-id="${r.id}" data-permalink="${r.comment_permalink||''}">
+        <div class="lead-top">
+          <div class="lead-icon">${posted?ic('check'):ic('reply')}</div>
+          <div>
+            <div class="lead-sub">u/${escapeHtml(r.comment_author||'user')}</div>
+            <div class="lead-time">${r.created_utc?timeAgo(r.created_utc):'on your post'}</div>
+          </div>
+          ${posted?`<span class="posted-tag">${ic('check',11)} Replied</span>`:''}
+        </div>
+        <div class="post-box">
+          <div class="box-label">Their comment</div>
+          <div class="box-text" data-preview="${escapeHtml(preview)}" data-fulltext="${escapeHtml(c)}">${escapeHtml(showToggle?preview:c)}</div>
+          ${showToggle?`<button class="box-more" data-action="toggle-body" data-expanded="0">Show more</button>`:''}
+        </div>
+        <div class="draft-box">
+          <div class="box-label">AI reply</div>
+          <div class="box-text">${escapeHtml(r.draft_reply) || '<span class="ink-faint">(no draft)</span>'}</div>
+        </div>
+        <div class="lead-actions">
+          <button class="act-primary ${posted?'done':''}" data-action="post">${posted?ic('check',15):ic('send',15)} ${posted?'Replied':'Copy & Reply'}</button>
+          <button class="act-ghost" data-action="edit"   aria-label="Edit reply">${ic('edit')}</button>
+          <button class="act-ghost" data-action="view"   aria-label="View comment">${ic('eye')}</button>
+          <button class="act-ghost" data-action="delete" aria-label="Delete">${ic('trash')}</button>
+        </div>
+        <div class="edit-box">
+          <textarea rows="3">${r.draft_reply || ''}</textarea>
+          <button class="edit-save" data-action="save-edit">Save edit</button>
+        </div>
+      </div>`;
+  }
+
+  async function loadReplies(){
+    const { data } = await sb.from('post_replies').select('*').eq('status','new').order('fetched_at', {ascending:false});
+    const el = document.getElementById('replyList');
+    el.innerHTML = (data && data.length) ? data.map(replyCardHTML).join('') : `<div class="empty">No new replies yet.</div>`;
+    const badge = document.getElementById('navCountReplies');
+    if (badge) badge.textContent = (data||[]).length;
+    bindReplyCards();
+  }
+
+  function bindReplyCards(){
+    document.querySelectorAll('#replyList .lead-card').forEach(card => {
+      const id = card.dataset.id;
+      card.querySelector('[data-action="post"]').addEventListener('click', async () => {
+        if(card.classList.contains('posted')) return;
+        const draft = card.querySelector('.edit-box textarea').value;
+        try { await navigator.clipboard.writeText(draft); } catch(e) {}
+        await sb.from('post_replies').update({status:'posted', posted_at: Math.floor(Date.now()/1000)}).eq('id', id);
+        showToast('Copied · marked replied');
+        window.open(`https://www.reddit.com${card.dataset.permalink||''}`, '_blank');
+        loadReplies();
+      });
+      card.querySelector('[data-action="view"]').addEventListener('click', () => window.open(`https://www.reddit.com${card.dataset.permalink||''}`, '_blank'));
+      card.querySelector('[data-action="edit"]').addEventListener('click', () => card.querySelector('.edit-box').classList.toggle('open'));
+      card.querySelector('[data-action="save-edit"]').addEventListener('click', async () => {
+        const text = card.querySelector('.edit-box textarea').value;
+        await sb.from('post_replies').update({draft_reply: text, edited: true}).eq('id', id);
+        showToast('Edit saved');
+      });
+      card.querySelector('[data-action="delete"]').addEventListener('click', async () => {
+        card.classList.add('removing');
+        await sb.from('post_replies').update({status:'deleted'}).eq('id', id);
+        showToast('Removed');
+        setTimeout(loadReplies, 260);
+      });
+      bindToggleBody(card);
+    });
+  }
+
+  async function loadMonitoredPosts(){
+    const { data } = await sb.from('monitored_posts').select('*').order('created_at', {ascending:false});
+    const el = document.getElementById('mpList');
+    el.innerHTML = (data && data.length) ? '' : `<div class="empty">No posts monitored yet — add one below.</div>`;
+    (data||[]).forEach(p => {
+      const row = document.createElement('div');
+      row.className = 'sub-row';
+      const label = p.title ? p.title : p.url;
+      row.innerHTML = `<span style="overflow:hidden;">${escapeHtml(label.length>60?label.slice(0,60)+'…':label)}<br><small style="color:var(--ink-faint);">every ${p.interval_minutes}m · skips u/${escapeHtml(p.exclude_author||'—')}</small></span>
+        <input type="checkbox" ${p.active?'checked':''} data-toggle="${p.id}" style="width:20px;height:20px;flex-shrink:0;">
+        <button data-del="${p.id}">${ic('trash',15)}</button>`;
+      row.querySelector('[data-toggle]').addEventListener('change', async (e) => {
+        await sb.from('monitored_posts').update({active:e.target.checked}).eq('id', p.id);
+      });
+      row.querySelector('[data-del]').addEventListener('click', async () => {
+        await sb.from('monitored_posts').delete().eq('id', p.id);
+        loadMonitoredPosts();
+      });
+      el.appendChild(row);
+    });
+  }
+
+  document.getElementById('mpAddBtn').addEventListener('click', async () => {
+    const url = document.getElementById('mpUrl').value.trim();
+    const author = document.getElementById('mpAuthor').value.trim().replace(/^u\//,'');
+    const interval = Number(document.getElementById('mpInterval').value) || 30;
+    const m = url.match(/comments\/([a-z0-9]+)/i);
+    if (!m) { showToast('Paste a full Reddit post URL'); return; }
+    const { error } = await sb.from('monitored_posts').upsert({ id: m[1], url, exclude_author: author, interval_minutes: interval, active: true });
+    if (error) { showToast('Could not add post'); return; }
+    document.getElementById('mpUrl').value = '';
+    showToast('Post added');
+    loadMonitoredPosts();
+  });
+
+  document.getElementById('fetchNowBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('fetchNowBtn');
+    if (btn.disabled) return;
+    btn.disabled = true; btn.classList.add('spinning');
+    document.getElementById('fetchNowText').textContent = 'Triggering…';
+    try { await sb.from('triggers').update({ value: Math.floor(Date.now()/1000) }).eq('key', 'reply_now'); showToast('Fetch triggered — laptop picks it up in ~20s'); }
+    catch (e) { showToast('Could not trigger'); }
+    finally { setTimeout(() => { btn.disabled=false; btn.classList.remove('spinning'); document.getElementById('fetchNowText').textContent='Fetch now'; }, 3000); }
+  });
+
+  // ---------- Leads: scan-now, missed ----------
+  let tt;
+  function showToast(text){
+    const toast = document.getElementById('toast');
+    document.getElementById('toastText').textContent = text;
+    toast.classList.add('show');
+    clearTimeout(tt);
+    tt = setTimeout(()=>toast.classList.remove('show'), 2300);
+  }
+
+  document.getElementById('scanNowBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('scanNowBtn');
+    if (btn.disabled) return;
+    btn.disabled = true; btn.classList.add('spinning');
+    document.getElementById('scanNowText').textContent = 'Triggering…';
+    try { await sb.from('triggers').update({ value: Math.floor(Date.now()/1000) }).eq('key', 'scan_now'); showToast('Scan triggered — laptop picks it up in ~20s'); }
+    catch (e) { showToast('Could not trigger scan'); }
+    finally { setTimeout(() => { btn.disabled=false; btn.classList.remove('spinning'); document.getElementById('scanNowText').textContent='Scan now'; }, 3000); }
+  });
+
+  document.getElementById('missedChip').addEventListener('click', () => {
+    document.getElementById('missedWrap').classList.toggle('open');
+    document.getElementById('missedChip').classList.toggle('open');
+  });
+  document.getElementById('clearMissed').addEventListener('click', async () => {
+    const now = Math.floor(Date.now()/1000);
+    let q = sb.from('leads').update({status:'deleted'}).eq('status','new').lt('created_utc', now-freshnessSecs);
+    if (activeTab !== 'All') q = q.eq('subreddit', activeTab);
+    await q;
+    showToast('Missed queue cleared');
+    loadLeads(); loadStats();
+  });
+
+  // ---------- Settings: subreddits ----------
+  async function loadSubList(){
+    const { data: subs } = await sb.from('subreddits').select('*').order('name');
+    const el = document.getElementById('subList');
+    el.innerHTML = (subs&&subs.length) ? '' : `<div class="empty">No subreddits yet — add one below.</div>`;
+    (subs||[]).forEach(s => {
+      const row = document.createElement('div');
+      row.className = 'sub-row';
+      row.innerHTML = `<span>r/${s.name}</span><button data-name="${s.name}">${ic('x',15)}</button>`;
+      row.querySelector('button').addEventListener('click', async () => {
+        await sb.from('subreddits').delete().eq('name', s.name);
+        loadSubList(); loadSubTabs(); loadStats();
+      });
+      el.appendChild(row);
+    });
+  }
+  document.getElementById('addSubBtn').addEventListener('click', async () => {
+    const input = document.getElementById('addSubInput');
+    const name = input.value.trim().replace(/^r\//,'');
+    if(!name) return;
+    await sb.from('subreddits').insert({ name });
+    input.value = '';
+    loadSubList(); loadSubTabs(); loadStats();
+  });
+
+  async function loadScanFields(){
+    const { data } = await sb.from('settings').select('key,value').in('key', ['scan_interval_hours','freshness_window_hours']);
+    (data||[]).forEach(r => {
+      if (r.key==='scan_interval_hours') scanInterval.value = r.value;
+      if (r.key==='freshness_window_hours') freshWindow.value = r.value;
+    });
+  }
+  async function saveScanFieldsViaApi(){
+    const secret = localStorage.getItem('lr_secret');
+    if (!secret) { showToast('Unlock AI settings once to enable saving'); return; }
+    await fetch(SETTINGS_API_URL, {
+      method:'PUT', headers:{'Content-Type':'application/json','Authorization':`Bearer ${secret}`},
+      body: JSON.stringify({ scan_interval_hours: scanInterval.value, freshness_window_hours: freshWindow.value }),
+    });
+    freshnessSecs = Number(freshWindow.value)*3600;
+    loadLeads(); loadStats();
+  }
+  scanInterval.addEventListener('change', saveScanFieldsViaApi);
+  freshWindow.addEventListener('change', saveScanFieldsViaApi);
+
+  // ---------- Settings: function on/off toggles (mutually exclusive) ----------
+  async function loadFunctionToggles(){
+    const { data } = await sb.from('settings').select('key,value').in('key', ['scan_enabled','reply_enabled']);
+    const map = {}; (data||[]).forEach(r => map[r.key] = r.value);
+    document.getElementById('scanEnabledToggle').checked  = map.scan_enabled  === 'true';
+    document.getElementById('replyEnabledToggle').checked = map.reply_enabled === 'true';
+  }
+  async function saveToggles(scanOn, replyOn){
+    const secret = localStorage.getItem('lr_secret');
+    if (!secret) { showToast('Unlock AI settings once to change these'); loadFunctionToggles(); return; }
+    await fetch(SETTINGS_API_URL, {
+      method:'PUT', headers:{'Content-Type':'application/json','Authorization':`Bearer ${secret}`},
+      body: JSON.stringify({ scan_enabled: scanOn?'true':'false', reply_enabled: replyOn?'true':'false' }),
+    });
+    document.getElementById('scanEnabledToggle').checked = scanOn;
+    document.getElementById('replyEnabledToggle').checked = replyOn;
+    showToast('Saved');
+  }
+  document.getElementById('scanEnabledToggle').addEventListener('change', (e) => {
+    if (e.target.checked) saveToggles(true, false);
+    else saveToggles(false, document.getElementById('replyEnabledToggle').checked);
+  });
+  document.getElementById('replyEnabledToggle').addEventListener('change', (e) => {
+    if (e.target.checked) saveToggles(false, true);
+    else saveToggles(document.getElementById('scanEnabledToggle').checked, false);
+  });
+
+  // ---------- AI settings (password-gated) ----------
+  async function settingsApiGet(secret){
+    const res = await fetch(SETTINGS_API_URL, { headers: { Authorization: `Bearer ${secret}` } });
+    if (!res.ok) throw new Error('bad password');
+    return res.json();
+  }
+  function populateAI(s){
+    document.getElementById('lockedBlock').style.display = 'none';
+    document.getElementById('aiFields').style.display = 'block';
+    primaryKey.value = s.ai_primary_api_key || '';
+    primaryModel.value = s.ai_primary_model || 'qwen-plus';
+    primaryBudget.value = s.ai_primary_token_budget || 1000000;
+    fallbackKey.value = s.ai_fallback_api_key || '';
+    fallbackModel.value = s.ai_fallback_model || 'claude-haiku-4-5-20251001';
+    autoFallback.checked = s.ai_auto_fallback === 'true';
+    leadCriteria.value = s.lead_criteria_prompt || '';
+    commentStyle.value = s.comment_style_notes || '';
+    replyStyle.value = s.reply_style_notes || '';
+    quietStart.value = s.quiet_hours_start ?? '';
+    quietEnd.value = s.quiet_hours_end ?? '';
+    startupJitter.value = s.startup_jitter_max_minutes ?? '5';
+  }
+  async function unlockAI(){
+    const pw = document.getElementById('unlockPw').value;
+    try {
+      const s = await settingsApiGet(pw);
+      localStorage.setItem('lr_secret', pw);
+      populateAI(s);
+    } catch (e) { showToast('Wrong password'); }
+  }
+  document.getElementById('unlockGo').addEventListener('click', unlockAI);
+  document.getElementById('unlockBtn').addEventListener('click', () => {
+    document.getElementById('lockedBlock').style.display = 'block';
+    document.getElementById('aiFields').style.display = 'none';
+  });
+
+  document.getElementById('saveSettings').addEventListener('click', async () => {
+    const secret = localStorage.getItem('lr_secret');
+    await fetch(SETTINGS_API_URL, {
+      method:'PUT', headers:{'Content-Type':'application/json','Authorization':`Bearer ${secret}`},
+      body: JSON.stringify({
+        ai_primary_api_key: primaryKey.value,
+        ai_primary_model: primaryModel.value,
+        ai_primary_token_budget: primaryBudget.value,
+        ai_fallback_api_key: fallbackKey.value,
+        ai_fallback_model: fallbackModel.value,
+        ai_auto_fallback: autoFallback.checked ? 'true' : 'false',
+        lead_criteria_prompt: leadCriteria.value,
+        comment_style_notes: commentStyle.value,
+        reply_style_notes: replyStyle.value,
+        quiet_hours_start: quietStart.value,
+        quiet_hours_end: quietEnd.value,
+        startup_jitter_max_minutes: startupJitter.value,
+      }),
+    });
+    const note = document.getElementById('saveNote');
+    note.textContent = 'Saved ✓';
+    setTimeout(()=> note.textContent = '', 2000);
+  });
+
+  async function tryAutoUnlock(){
+    const secret = localStorage.getItem('lr_secret');
+    if (!secret) return;
+    try { populateAI(await settingsApiGet(secret)); }
+    catch(e) { localStorage.removeItem('lr_secret'); }
+  }
+
+  // ---------- nav ----------
+  document.querySelectorAll('.nav-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+      document.getElementById(`view-${btn.dataset.view}`).classList.add('active');
+      if(btn.dataset.view === 'myposts'){ loadMonitoredPosts(); loadReplies(); }
+      if(btn.dataset.view === 'ai'){ tryAutoUnlock(); }
+      if(btn.dataset.view === 'settings'){ loadFunctionToggles(); loadSubList(); loadScanFields(); }
+      if(btn.dataset.view === 'analytics'){ loadScanLog(); }
+    });
+  });
+
+  // ---------- boot ----------
+  (async () => {
+    await loadFreshnessWindow();
+    loadSubTabs(); loadLeads(); loadStats(); loadReplies();
+  })();
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>

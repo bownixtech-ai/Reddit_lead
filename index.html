@@ -70,6 +70,9 @@
   .lead-time{ font-family:var(--mono); font-size:11.5px; color:var(--ink-dim); margin-top:3px; }
   .lead-card.posted .lead-sub, .lead-card.posted .lead-time{ color:var(--ink-faint); }
   .posted-tag{ margin-left:auto; display:flex; align-items:center; gap:5px; background:var(--surface-2); color:var(--ink-dim); font-size:11px; font-weight:700; padding:6px 10px; border-radius:999px; flex-shrink:0; }
+  .pitch-tag{ display:flex; align-items:center; gap:5px; font-size:11px; font-weight:700; padding:6px 10px; border-radius:999px; width:fit-content; margin-bottom:12px; }
+  .pitch-tag.pitch-yes{ background:var(--navy); color:var(--blue); border:1px solid var(--navy-line); }
+  .pitch-tag.pitch-muted{ background:var(--surface-2); color:var(--ink-faint); border:1px solid var(--line); }
 
   .lead-title{ font-size:14.5px; font-weight:700; line-height:1.35; margin-bottom:11px; }
 
@@ -342,7 +345,8 @@
     eye:'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
     trash:'<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 012-2h2a2 2 0 012 2v2"/>',
     check:'<polyline points="20 6 9 17 4 12"/>',
-    x:'<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>'
+    x:'<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+    target:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>'
   };
   const ic = (n,w=16) => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${ICONS[n]}</svg>`;
 
@@ -360,6 +364,12 @@
   }
 
   // ---------- Leads cards ----------
+  function pitchBadgeHTML(lead){
+    if (lead.pitch_used) return `<div class="pitch-tag pitch-yes">${ic('target',11)} Pitched</div>`;
+    if (lead.pitch_worthy === true) return `<div class="pitch-tag pitch-muted">Worthy, skipped</div>`;
+    if (lead.pitch_worthy === false) return `<div class="pitch-tag pitch-muted">Not a fit</div>`;
+    return `<div class="pitch-tag pitch-muted">Not evaluated</div>`;
+  }
   function cardHTML(lead){
     const posted = lead.status === 'posted';
     const bodyText = (lead.post_body || '').trim();
@@ -375,6 +385,7 @@
           </div>
           ${posted?`<span class="posted-tag">${ic('check',11)} Posted</span>`:''}
         </div>
+        ${pitchBadgeHTML(lead)}
         ${lead.title ? `<div class="lead-title">${escapeHtml(lead.title)}</div>` : ''}
         ${bodyText ? `
         <div class="post-box">

@@ -615,13 +615,29 @@
     });
   }
 
+  // FNV-1a hash — turns any pasted URL into a short, stable, deterministic id.
+  // The same URL always produces the same id, so re-adding a post you already
+  // added updates that row instead of creating a duplicate. This replaced
+  // extracting Reddit's own post id via regex, because mobile share links
+  // (reddit.com/r/sub/s/AbCdEfGh1j) don't contain a post id at all — resolving
+  // those now happens server-side in reply-scan.js, which can follow the
+  // redirect with a real browser; the PWA no longer needs to know the format.
+  function hashUrl(str) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return (h >>> 0).toString(16).padStart(8, '0');
+  }
+
   document.getElementById('mpAddBtn').addEventListener('click', async () => {
     const url = document.getElementById('mpUrl').value.trim();
     const author = document.getElementById('mpAuthor').value.trim().replace(/^u\//,'');
     const interval = Number(document.getElementById('mpInterval').value) || 30;
-    const m = url.match(/comments\/([a-z0-9]+)/i);
-    if (!m) { showToast('Paste a full Reddit post URL'); return; }
-    const { error } = await sb.from('monitored_posts').upsert({ id: m[1], url, exclude_author: author, interval_minutes: interval, active: true });
+    if (!/reddit\.com\/r\//i.test(url)) { showToast('Paste a Reddit post link'); return; }
+    const id = hashUrl(url.toLowerCase());
+    const { error } = await sb.from('monitored_posts').upsert({ id, url, exclude_author: author, interval_minutes: interval, active: true });
     if (error) { showToast('Could not add post'); return; }
     document.getElementById('mpUrl').value = '';
     showToast('Post added');
